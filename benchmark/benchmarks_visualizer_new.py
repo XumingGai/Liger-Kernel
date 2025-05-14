@@ -94,10 +94,9 @@ def load_data(config: VisualizationsConfig) -> pd.DataFrame:
 
     return filtered_df
 
-
-
+'''
 def plot_data(df: pd.DataFrame, config: VisualizationsConfig):
-    """Plots the benchmark data, saving the result if needed.
+    """Plots the benchmark data as bar chart, saving the result if needed.
 
     Args:
         df (pd.DataFrame): Filtered benchmark dataframe.
@@ -105,57 +104,134 @@ def plot_data(df: pd.DataFrame, config: VisualizationsConfig):
     """
     xlabel = df["x_label"].iloc[0]
     ylabel = f"{config.metric_name} ({df['metric_unit'].iloc[0]})"
-    # Sort by "kernel_provider" to ensure consistent color assignment
-    df["provider_platform"] = df["kernel_provider"] + " (" + df["platform"] + ")"
-    df = df.sort_values(by="provider_platform")
 
-    plt.figure(figsize=(10, 6))
+    df["provider_platform"] = df["kernel_provider"] + " (" + df["platform"] + ")"
+    df = df.sort_values(by=["x_value", "provider_platform"])
+
+    plt.figure(figsize=(12, 7))
     sns.set(style="whitegrid")
-    ax = sns.lineplot(
+
+    # Bar chart
+    ax = sns.barplot(
         data=df,
         x="x_value",
         y="y_value_50",
         hue="provider_platform",
-        marker="o",
         palette="tab10",
-        errorbar=("ci", None),
+        errorbar=None,  # 我们手动添加误差棒
+        dodge=True,
     )
 
-    # Seaborn can't plot pre-computed error bars, so we need to do it manually
-    lines = ax.get_lines()
-    colors = [line.get_color() for line in lines]
+    # 手动添加误差棒
+    grouped = df.groupby(["x_value", "provider_platform"])
+    positions = {}
 
-    for (_, group_data), color in zip(df.groupby("provider_platform"), colors):
-        # for i, row in group_data.iterrows():
-        y_error_lower = group_data["y_value_50"] - group_data["y_value_20"]
-        y_error_upper = group_data["y_value_80"] - group_data["y_value_50"]
-        y_error = [y_error_lower, y_error_upper]
+    # 获取每个 bar 的横轴位置
+    #for bar, (_, row) in zip(ax.patches, grouped):
+    for bar, ((x_val, provider_platform), group_data) in zip(ax.patches, grouped):
+        x = bar.get_x() + bar.get_width() / 2
+        #positions[(row[0], row[1])] = x
+        #positions[(row["x_value"], row["provider_platform"])] = x
+        positions[(x_val, provider_platform)] = x
 
+    for (x_val, provider_platform), group_data in grouped:
+        row = group_data.iloc[0]
+        y = row["y_value_50"]
+        yerr_lower = y - row["y_value_20"]
+        yerr_upper = row["y_value_80"] - y
+        x_pos = positions[(x_val, provider_platform)]
         plt.errorbar(
-            group_data["x_value"],
-            group_data["y_value_50"],
-            yerr=y_error,
-            fmt="o",
-            color=color,
+            x=x_pos,
+            y=y,
+            yerr=[[yerr_lower], [yerr_upper]],
+            fmt="none",
+            ecolor="black",
             capsize=5,
+            linewidth=1,
         )
+
     plt.legend(title="Provider (Platform)")
-    plt.xlabel(df["x_label"].iloc[0])
-    plt.ylabel(f"{config.metric_name} ({df['metric_unit'].iloc[0]})")
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
     plt.tight_layout()
 
     filename = f"{config.kernel_name}_{config.metric_name}_{'_'.join(config.platforms)}.png"
     out_path = os.path.join(VISUALIZATIONS_PATH, filename)
 
-
     if config.display:
         plt.show()
-    if config.overwrite or not os.path.exists(
-        out_path
-    ):  # Save the plot if it doesn't exist or if we want to overwrite it
+    if config.overwrite or not os.path.exists(out_path):
         os.makedirs(VISUALIZATIONS_PATH, exist_ok=True)
         plt.savefig(out_path)
     plt.close()
+'''
+
+def plot_data(df: pd.DataFrame, config: VisualizationsConfig):
+    """Plots the benchmark data as a bar chart, saving the result if needed.
+
+    Args:
+        df (pd.DataFrame): Filtered benchmark dataframe.
+        config (VisualizationsConfig): Configuration object for the visualizations script.
+    """
+    df["provider_platform"] = df["kernel_provider"] + " (" + df["platform"] + ")"
+
+    xlabel = df["x_label"].iloc[0]
+    ylabel = f"{config.metric_name} ({df['metric_unit'].iloc[0]})"
+
+    plt.figure(figsize=(12, 6))
+    sns.set(style="whitegrid")
+
+    ax = sns.barplot(
+        data=df,
+        x="x_value",
+        y="y_value_50",
+        hue="provider_platform",
+        palette="tab10"
+    )
+    for p in ax.patches:
+        height = p.get_height()
+        if pd.notna(height):
+            ax.text(
+                x=p.get_x() + p.get_width() / 2,
+                y=height,
+                s=f"{height:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=9
+            )
+
+    print(df[["x_value", "y_value_50", "provider_platform"]])
+    df = df.dropna(subset=["y_value_50"])
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(f"{config.kernel_name} - {config.metric_name}")
+    plt.legend(title="Provider (Platform)")
+    plt.tight_layout()
+
+    filename = f"{config.kernel_name}_{config.metric_name}_{'_'.join(config.platforms)}.png"
+    out_path = os.path.join(VISUALIZATIONS_PATH, filename)
+
+    if config.display:
+        plt.show()
+    if config.overwrite or not os.path.exists(out_path):
+        os.makedirs(VISUALIZATIONS_PATH, exist_ok=True)
+        plt.savefig(out_path)
+    pivot_df = df.pivot_table(
+        index="x_value",
+        columns="platform",
+        values="y_value_50"
+    )
+    print(pivot_df)    
+    pivot_df = pivot_df[sorted(pivot_df.columns)]
+
+    csv_out_path = os.path.join(
+        VISUALIZATIONS_PATH,
+        f"{config.kernel_name}_{config.metric_name}_{'_'.join(config.platforms)}.csv"
+    )
+
+    pivot_df.to_csv(csv_out_path)
+    plt.close()
+
 
 
 def main():
