@@ -76,6 +76,7 @@ def load_data(config: VisualizationsConfig) -> pd.DataFrame:
 
     for platform in config.platforms:
         data_path = os.path.abspath(os.path.join(os.path.dirname(__file__), f"data/{platform}/all_benchmark_data.csv"))
+        print(data_path)
         df = pd.read_csv(data_path)
         df["extra_benchmark_config"] = df["extra_benchmark_config_str"].apply(json.loads)
         df["platform"] = platform  # ← 标记平台
@@ -143,12 +144,12 @@ def plot_data(df: pd.DataFrame, config: VisualizationsConfig):
     # Finalize plot
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
-    plt.title(f"{config.kernel_name} - {config.metric_name}")
+    plt.title(f"{config.kernel_name} - {config.metric_name} - {config.kernel_operation_mode}")
     plt.legend(title="Provider (Platform)")
     plt.tight_layout()
 
     # Save plot
-    filename = f"{config.kernel_name}_{config.metric_name}_{'_'.join(config.platforms)}.png"
+    filename = f"{config.kernel_name}_{config.metric_name}_{config.kernel_operation_mode}_{'_'.join(config.platforms)}.png"
     out_path = os.path.join(VISUALIZATIONS_PATH, filename)
 
     if config.display:
@@ -178,11 +179,9 @@ def plot_data(df: pd.DataFrame, config: VisualizationsConfig):
     # Save CSV
     csv_out_path = os.path.join(
         VISUALIZATIONS_PATH,
-        f"{config.kernel_name}_{config.metric_name}_{'_'.join(config.platforms)}.csv"
+        f"{config.kernel_name}_{config.metric_name}_{config.kernel_operation_mode}_{'_'.join(config.platforms)}.csv"
     )
     pivot_df.to_csv(csv_out_path)
-    print(f"[INFO] Saved CSV to: {csv_out_path}")
-    print(pivot_df)
 
 
 '''
