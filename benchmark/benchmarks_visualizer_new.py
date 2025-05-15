@@ -94,67 +94,60 @@ def load_data(config: VisualizationsConfig) -> pd.DataFrame:
 
     return filtered_df
 
-'''
 def plot_data(df: pd.DataFrame, config: VisualizationsConfig):
-    """Plots the benchmark data as bar chart, saving the result if needed.
+    """Plot benchmark results and save both figure and summary CSV."""
 
-    Args:
-        df (pd.DataFrame): Filtered benchmark dataframe.
-        config (VisualizationsConfig): Configuration object for the visualizations script.
-    """
+    # Drop invalid entries
+    df = df.dropna(subset=["y_value_50"])
+
+    # Enrich label for hue
+    df["provider_platform"] = df["kernel_provider"] + " (" + df["platform"] + ")"
+
+    # Extract axis labels
     xlabel = df["x_label"].iloc[0]
     ylabel = f"{config.metric_name} ({df['metric_unit'].iloc[0]})"
 
-    df["provider_platform"] = df["kernel_provider"] + " (" + df["platform"] + ")"
-    df = df.sort_values(by=["x_value", "provider_platform"])
-
-    plt.figure(figsize=(12, 7))
+    # Plot setup
+    plt.figure(figsize=(12, 6))
     sns.set(style="whitegrid")
-
-    # Bar chart
+    palette_dict = {
+        provider: "#FFA500" if "a100" in provider.lower() else "#1F77B4"
+        for provider in df["provider_platform"].unique()
+    } 
     ax = sns.barplot(
         data=df,
         x="x_value",
         y="y_value_50",
         hue="provider_platform",
-        palette="tab10",
-        errorbar=None,  # 我们手动添加误差棒
-        dodge=True,
+        palette=palette_dict
     )
-
-    # 手动添加误差棒
-    grouped = df.groupby(["x_value", "provider_platform"])
-    positions = {}
-
-    # 获取每个 bar 的横轴位置
-    #for bar, (_, row) in zip(ax.patches, grouped):
-    for bar, ((x_val, provider_platform), group_data) in zip(ax.patches, grouped):
-        x = bar.get_x() + bar.get_width() / 2
-        #positions[(row[0], row[1])] = x
-        #positions[(row["x_value"], row["provider_platform"])] = x
-        positions[(x_val, provider_platform)] = x
-
-    for (x_val, provider_platform), group_data in grouped:
-        row = group_data.iloc[0]
-        y = row["y_value_50"]
-        yerr_lower = y - row["y_value_20"]
-        yerr_upper = row["y_value_80"] - y
-        x_pos = positions[(x_val, provider_platform)]
-        plt.errorbar(
-            x=x_pos,
-            y=y,
-            yerr=[[yerr_lower], [yerr_upper]],
-            fmt="none",
-            ecolor="black",
-            capsize=5,
-            linewidth=1,
+    for p in ax.patches:
+        height = p.get_height()
+        if pd.isna(height) or height < 1e-4:
+            continue  # Skip NaN or near-zero bars
+        if height >= 1000:
+            text = f"{height:.2e}"  # scientific notation
+        elif height < 0.1:
+            text = f"{height:.3f}"
+        else:
+            text = f"{height:.2f}"
+        ax.text(
+            x=p.get_x() + p.get_width() / 2,
+            y=height,
+            s=text,
+            ha="center",
+            va="bottom",
+            fontsize=9
         )
-
-    plt.legend(title="Provider (Platform)")
+ 
+    # Finalize plot
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
+    plt.title(f"{config.kernel_name} - {config.metric_name}")
+    plt.legend(title="Provider (Platform)")
     plt.tight_layout()
 
+    # Save plot
     filename = f"{config.kernel_name}_{config.metric_name}_{'_'.join(config.platforms)}.png"
     out_path = os.path.join(VISUALIZATIONS_PATH, filename)
 
@@ -164,8 +157,35 @@ def plot_data(df: pd.DataFrame, config: VisualizationsConfig):
         os.makedirs(VISUALIZATIONS_PATH, exist_ok=True)
         plt.savefig(out_path)
     plt.close()
-'''
 
+    # Pivot for CSV summary
+    pivot_df = df.pivot_table(
+        index="x_value",
+        columns="platform",
+        values="y_value_50"
+    )
+
+    # Sort platform columns
+    pivot_df = pivot_df[sorted(pivot_df.columns)]
+
+    # Add platform ratio if at least two platforms
+    platforms = sorted(pivot_df.columns)
+    if len(platforms) >= 2:
+        base, compare = platforms[0], platforms[1]
+        ratio_name = f"{compare}/{base}"
+        pivot_df[ratio_name] = pivot_df[compare] / pivot_df[base]
+
+    # Save CSV
+    csv_out_path = os.path.join(
+        VISUALIZATIONS_PATH,
+        f"{config.kernel_name}_{config.metric_name}_{'_'.join(config.platforms)}.csv"
+    )
+    pivot_df.to_csv(csv_out_path)
+    print(f"[INFO] Saved CSV to: {csv_out_path}")
+    print(pivot_df)
+
+
+'''
 def plot_data(df: pd.DataFrame, config: VisualizationsConfig):
     """Plots the benchmark data as a bar chart, saving the result if needed.
 
@@ -200,7 +220,6 @@ def plot_data(df: pd.DataFrame, config: VisualizationsConfig):
                 fontsize=9
             )
 
-    print(df[["x_value", "y_value_50", "provider_platform"]])
     df = df.dropna(subset=["y_value_50"])
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
@@ -221,7 +240,6 @@ def plot_data(df: pd.DataFrame, config: VisualizationsConfig):
         columns="platform",
         values="y_value_50"
     )
-    print(pivot_df)    
     pivot_df = pivot_df[sorted(pivot_df.columns)]
 
     csv_out_path = os.path.join(
@@ -231,7 +249,7 @@ def plot_data(df: pd.DataFrame, config: VisualizationsConfig):
 
     pivot_df.to_csv(csv_out_path)
     plt.close()
-
+'''
 
 
 def main():
